@@ -1,0 +1,11 @@
+location                 = "canadacentral"
+resource_group_name      = "rgfiap"
+server_name              = "svsfiap"
+database_name            = "OficinaMecanicaDb"
+administrator_login      = "adminfiap"
+seguranca_database_name  = "SegurancaDb"
+
+# client_ip_address = "203.0.113.5"   # opcional: libera acesso direto ao banco a partir deste IP
+
+# administrator_login_password nao tem default - definir via variavel de ambiente antes do apply:
+# $env:TF_VAR_administrator_login_password = "<senha-forte>"
