@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, release]
+  push:
+    branches: [main, release]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.7"
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+
+      # Identidade unica do repo (OficinaMecanica.Infra/github_oidc_banco) -
+      # cobre tanto PR (plan) quanto push em main/release (apply, job abaixo).
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      # -lock=false de proposito: e so leitura (plan), nao disputa lock com
+      # o job de apply nem com um terraform apply manual rodando ao mesmo
+      # tempo - NUNCA fazer isso num terraform apply de verdade.
+      - name: Terraform Plan
+        run: terraform plan -input=false -lock=false
+        env:
+          TF_VAR_administrator_login_password: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}
+
+  apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: validate
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release')
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.7"
+
+      # Mesma identidade do job "validate" acima
+      # (OficinaMecanica.Infra/github_oidc_banco) - so essa credential
+      # federada e restrita a push em main/release, nunca alcancavel a
+      # partir de um PR.
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: terraform apply -input=false -auto-approve
+        env:
+          TF_VAR_administrator_login_password: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}
