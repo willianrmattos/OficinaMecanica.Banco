@@ -34,6 +34,9 @@ inteiro *e* essa unica responsabilidade):
   `OficinaMecanica.Infra` (`stfiap`/`tfstate`) - **key diferente**
   (`banco.tfstate`), pra nao colidir com o state do Infra. Sao dois state
   files distintos no mesmo blob container.
+- **`.github/workflows/ci.yml`**: `validate` (fmt/validate/plan em PR e
+  push) + `apply` (so em push/disparo manual em `main`/`release`), via
+  GitHub OIDC (identidade unica, `OficinaMecanica.Infra/github_oidc_banco`).
 
 O campo que ativa o tier sempre-gratis (`use_free_limit`) nao existe no
 provider `azurerm` e nao pode ser setado depois via `az sql db update` (so
@@ -67,8 +70,11 @@ terraform apply
 terraform output
 ```
 
+Isso e pra rodar manualmente/localmente - o CI/CD (`.github/workflows/ci.yml`)
+ja roda `plan` em todo PR e `apply` automaticamente em todo push (ou
+disparo manual) em `main`/`release`, via GitHub OIDC.
+
 ## Fora de escopo (por enquanto)
 
-- CI/CD proprio (sem GitHub Actions ainda).
 - Resource group dedicado (o banco continua no `rgfiap` compartilhado, que
   o `OficinaMecanica.Infra` provisiona e gerencia).
