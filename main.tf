@@ -58,6 +58,27 @@ resource "azurerm_mssql_database" "seguranca" {
   tags = var.tags
 }
 
+# Terceiro banco no mesmo servidor logico, dedicado ao OficinaMecanica.Billing
+# (orcamentos e pagamentos). Mesmo padrao do "seguranca" acima: serverless
+# comum com auto-pause. Bancos separados no mesmo servidor isolam os dados
+# por credencial (usuario contido por banco, ver sql/criar-usuarios.sql), nao
+# por infraestrutura - o servidor logico continua sendo compartilhado de
+# proposito, pelos mesmos motivos de regiao/capacidade do banco acima.
+resource "azurerm_mssql_database" "billing" {
+  name      = var.billing_database_name
+  server_id = azurerm_mssql_server.this.id
+
+  collation                   = "SQL_Latin1_General_CP1_CI_AS"
+  sku_name                    = var.billing_sku_name
+  max_size_gb                 = var.billing_max_size_gb
+  min_capacity                = var.billing_min_capacity
+  auto_pause_delay_in_minutes = var.billing_auto_pause_delay_in_minutes
+  storage_account_type        = "Local"
+  zone_redundant              = false
+
+  tags = var.tags
+}
+
 # Usei a faixa especial 0.0.0.0-0.0.0.0: e o valor que o Azure reconhece como
 # "permitir servicos Azure" (ex: pods do AKS), nao libera a internet toda.
 resource "azurerm_mssql_firewall_rule" "allow_azure_services" {
