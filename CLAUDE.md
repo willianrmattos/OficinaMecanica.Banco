@@ -5,7 +5,7 @@
 Repositorio dedicado ao Terraform dos dados do ecossistema OficinaMecanica:
 
 - **Azure SQL Database**: o SQL Server logico (`svsfiap`) e os 3 bancos que
-  rodam nele (`OficinaMecanicaDb` do monolito `OficinaMecanica`, `SegurancaDb`
+  rodam nele (`OficinaMecanicaDb` do OS Service (o antigo monolito) `OficinaMecanica`, `SegurancaDb`
   do `OficinaMecanica.Seguranca`, `BillingDb` do `OficinaMecanica.Billing`),
   com um usuario SQL contido dedicado por banco.
 - **MongoDB Atlas (cluster M0 gratuito)** do `OficinaMecanica.Execucao`:
@@ -23,7 +23,7 @@ vazio nos dois repos apos a migracao.
 
 ## Estado atual: NADA disto foi aplicado
 
-BillingDb, usuarios SQL e Atlas (fase F6 dos microsservicos) estao so
+BillingDb, usuarios SQL e Atlas (a parte do Terraform dos microsservicos) estao so
 escritos e validados com `terraform fmt -check`, `terraform init
 -backend=false` e `terraform validate`. Nenhum `plan`/`apply`, nenhum SQL
 executado, nenhuma conta Atlas usada. O script `sql/criar-usuarios.sql` teve
@@ -148,7 +148,7 @@ fora do arquivo.
 
 Ordem em regime: **Banco -> Infra -> deploy dos servicos.** O Infra monta as
 connection strings com os usuarios `app_*`; se ele aplicar antes de esses
-usuarios existirem, monolito e Seguranca (que hoje usam o admin) perdem a
+usuarios existirem, OS Service e Seguranca (que hoje usam o admin) perdem a
 conexao.
 
 Bootstrap (primeira vez), nesta ordem:
@@ -217,7 +217,7 @@ criado: trocar nome ou regiao recria o cluster e apaga os dados (por isso
 `prevent_destroy`). Rotacionar a senha do usuario do Atlas:
 `terraform apply -replace=random_password.execucao_mongo` e reiniciar os pods.
 Nao verificado no Atlas real: transacoes multi-documento no M0 (necessarias ao
-outbox `MassTransit.MongoDb`; fallback do spike F0b: outbox embutido +
+outbox `MassTransit.MongoDb`; fallback do spike do outbox, ver o ADR 0002: outbox embutido +
 relay), regiao `US_EAST_2` oferecer M0 e criacao do cluster pelo provider 2.x.
 
 ## Por que nao acopla com o state do OficinaMecanica.Infra
@@ -229,7 +229,7 @@ acoplamento forte entre dois states remotos e evitado de proposito. Em vez
 disso, o FQDN do servidor e previsivel (`<nome>.database.windows.net`), e o
 `OficinaMecanica.Infra` so guarda variaveis simples (`sql_server_name`,
 `sql_database_name`, `seguranca_database_name`,
-`sql_administrator_login`/`_password`) que descrevem os mesmos "fatos
+`sql_app_os_*`, `sql_app_seguranca_*` e `sql_app_billing_*`, o login e a senha do usuario SQL dedicado de cada banco) que descrevem os mesmos "fatos
 conhecidos" configurados aqui - mesmo padrao ja usado la pro Key Vault
 (`key_vault_uri` montado a partir de `var.key_vault_name`, nao de um output
 de modulo). Se o nome do servidor ou dos bancos mudar aqui, precisa
@@ -249,7 +249,7 @@ Isso e pra rodar manualmente/localmente - o CI/CD (`.github/workflows/ci.yml`)
 ja roda `plan` em todo PR e `apply` automaticamente em todo push (ou
 disparo manual) em `main`/`release`, via GitHub OIDC.
 
-Validacao sem tocar em nada (o que foi feito na F6): `terraform fmt
+Validacao sem tocar em nada (o que foi feito ate agora): `terraform fmt
 -check -recursive`, `terraform init -backend=false`, `terraform validate`.
 Se ja existir um `.terraform/` inicializado com o backend remoto, usar
 `TF_DATA_DIR=<pasta temporaria>` no `init -backend=false`, senao o Terraform

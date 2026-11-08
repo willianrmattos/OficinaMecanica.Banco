@@ -63,7 +63,7 @@ administrador do servidor, o que da a cada servico acesso a todos os bancos.
    ele sobe).
 6. **Ordem de aplicacao**: Banco primeiro (bancos e usuarios), Infra depois
    (connection strings com esses usuarios no Key Vault), deploy dos servicos por
-   ultimo. Se o Infra aplicar antes de os usuarios existirem, monolito e
+   ultimo. Se o Infra aplicar antes de os usuarios existirem, OS Service (o antigo monolito) e
    Seguranca (que hoje usam o administrador) perdem a conexao.
 
    Bootstrap (primeira vez), coerente com o ADR 0002: (a) aplicar o Banco

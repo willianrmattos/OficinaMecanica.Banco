@@ -10,7 +10,7 @@ O `OficinaMecanica.Execucao` (fila de execucao, diagnostico e reparo) precisa
 de um banco proprio, NoSQL, independente dos bancos SQL dos outros servicos
 (requisito de independencia: banco, credencial de banco, segredos e rota
 dedicados por servico). O codigo dele ja assume MongoDB: a fila e consumida
-por `FindOneAndUpdate` atomico (claim) e o outbox do MassTransit
+por claim atomico (substituicao do documento filtrada pela versao, com retentativa em conflito) e o outbox do MassTransit
 (`MassTransit.MongoDb` 8.5.12) exige transacao multi-documento, ou seja,
 replica set. A aplicacao le `ConnectionStrings:MongoDb` e `MongoDb:Database`
 (padrao `execucao`).
@@ -155,7 +155,7 @@ mudam toda semana, inviavel); (d) runner proprio com IP fixo. Ate escolher, o
 - Como o `MongoClient` e singleton (um pool por pod), 500 conexoes cobrem as
   poucas replicas previstas; o teto real a vigiar e o de operacoes por segundo.
 - O outbox `MassTransit.MongoDb` custa cerca de 37,5 operacoes por mensagem
-  (medido no spike F0b), o que da um teto de ~2,7 mensagens/s no M0. O
+  (medido no spike do outbox), o que da um teto de ~2,7 mensagens/s no M0. O
   fallback do spike (outbox embutido no documento + relay) custa ~4,2
   operacoes por mensagem.
 - Inatividade: o Atlas pausa o cluster gratuito apos 30 dias sem conexoes.
@@ -163,10 +163,10 @@ mudam toda semana, inviavel); (d) runner proprio com IP fixo. Ate escolher, o
 ### Pendencias de validacao (nao verificadas)
 - Transacoes e replica set no M0: a pagina oficial de limites e silenciosa sobre
   transacoes multi-documento. O M0 e um replica set de 3 nos, entao e esperado
-  funcionar, mas o spike F0b rodou em Mongo 7 local; o teste real de transacao
+  funcionar, mas o spike do outbox rodou em Mongo 7 local; o teste real de transacao
   + consumer no Atlas M0 precisa acontecer antes de fechar a escolha do outbox
-  (`FINDINGS.md` do spike). Se o M0 rejeitar ou estrangular transacoes, usar o
-  fallback ja implementado.
+  (resultados do spike na secao abaixo). Se o M0 rejeitar ou estrangular
+  transacoes, usar o fallback ja implementado.
 - Regiao: `US_EAST_2` (Virginia) e o padrao por proximidade com o resource
   group do AKS (`northcentralus`), mas nem toda regiao Azure oferece o tier
   gratuito. A coluna "Free" da tabela de regioes Azure da documentacao do Atlas
@@ -179,6 +179,39 @@ mudam toda semana, inviavel); (d) runner proprio com IP fixo. Ate escolher, o
 - O provider `mongodbatlas` 2.x foi escolhido pela versao atual do registro; a
   sintaxe (`replication_specs` como lista de atributos) foi checada pelo
   `validate`, mas a criacao do M0 so se confirma no primeiro apply.
+
+### Resultados do spike do outbox
+Antes de escrever o Execucao, um spike descartavel validou o `MassTransit.MongoDb`
+8.5.12 com RabbitMQ contra um MongoDB 7 em replica set local (34 de 34 testes da
+suite principal). O Atlas M0 real e o Mongo 8.0 NAO foram verificados. O resumo
+abaixo e autocontido; o que o spike concluiu e o que o Banco e o Execucao
+precisam manter:
+
+| Item | Resultado |
+|------|-----------|
+| Consumer grava o documento e publica o evento pelo outbox na mesma transacao Mongo | Passou, com condicoes: falha depois da escrita deixa 0 documentos, 0 mensagens no outbox e 0 eventos; 3 entregas do mesmo `MessageId` executam o handler 1 vez e geram 1 evento; 5 copias concorrentes geram 1 evento |
+| Caminho HTTP (handler -> unidade de trabalho, UoW) | Passou: documento e evento gravados atomicamente; falha injetada resulta em 500, documento intacto e 0 eventos. A UoW faz o commit explicito e retenta `TransientTransactionError` com backoff |
+| Outbox embutido no documento (`eventosPendentes`) + relay (fallback) | Passou, mas nao recomendado: funciona ate em Mongo standalone e custa ~4,2 operacoes por mensagem (contra ~37,5 do outbox do MassTransit); sem lease/inbox o relay duplica entregas (3 a 4 vezes com 4 relays) |
+| Mongo standalone x replica set | Parcial: standalone falha com `Standalone servers do not support transactions` (o outbox do MassTransit nao funciona, o fallback sim); o outbox exige replica set, como o M0 (3 nos) |
+| Capacidade no M0 (so documentacao) | 500 conexoes, 100 operacoes/s, 0,5 GB, estrangula em vez de rejeitar; com ~37,5 operacoes por mensagem o teto e ~2,7 mensagens/s |
+
+Condicoes validadas para usar o outbox do MassTransit (e nao o fallback):
+- `UseMessageRetry` ANTES de `UseMongoDbOutbox`: sem o retry, 18 a 20 de 40
+  duplicatas concorrentes caem na fila de erro; com `Immediate(3)`, nenhuma.
+- Pre-criar as colecoes `inbox.states`, `outbox.messages` e `outbox.states` e o
+  indice unico `{MessageId, ConsumerId}` do inbox antes de o bus subir (o servico
+  de limpeza do inbox cria o indice em segundo plano e colide com a primeira
+  mensagem).
+- Todo caminho HTTP passa pela UoW com commit explicito da transacao: nao existe
+  "SaveChanges", e publicar sem `CommitTransaction` perde o evento em silencio. O
+  claim da fila, de preferencia, fora de transacao (dentro funciona, com
+  conflitos e retry).
+- `WaitUntilStarted = true` e janela de deduplicacao de 30 minutos, mantendo a
+  idempotencia natural do dominio como segunda defesa.
+
+Nao verificado pelo spike: Atlas M0 real e Mongo 8.0; queda do processo entre o
+commit e a entrega; broker indisponivel; varias replicas com entrega concorrente;
+politicas de retry alem de `Immediate(3)`; `maxPoolSize` no M0.
 
 ## Alternativas consideradas
 - **Atlas dentro do `OficinaMecanica.Infra`**: concentraria mais Terraform num so
