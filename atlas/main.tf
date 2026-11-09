@@ -1,8 +1,13 @@
 # MongoDB Atlas do OficinaMecanica.Execucao: projeto proprio, cluster M0
 # gratuito (hospedado no Azure), um usuario de banco dedicado e a IP access
 # list restrita ao IP de saida do AKS. A connection string final e gravada
-# por este mesmo repositorio no Key Vault - o OficinaMecanica.Infra so a le
+# por este mesmo root no Key Vault - o OficinaMecanica.Infra so a le
 # (SecretProviderClass do Execucao), nao precisa conhecer o Atlas.
+#
+# Este diretorio e um root Terraform separado do resto do Banco (state proprio,
+# atlas.tfstate) e eu o aplico so da minha maquina: o CI do Banco nunca fala com
+# o Atlas, porque a API de administracao dele exige IP fixo na API key e o
+# runner do GitHub nao tem (docs/adr/0004).
 #
 # As credenciais da API do Atlas (MONGODB_ATLAS_PUBLIC_KEY e
 # MONGODB_ATLAS_PRIVATE_KEY) vem do ambiente, nunca de arquivo - ver
@@ -83,7 +88,7 @@ resource "mongodbatlas_project_ip_access_list" "aks_egress" {
 
 data "azurerm_key_vault" "this" {
   name                = var.key_vault_name
-  resource_group_name = data.azurerm_resource_group.existing.name
+  resource_group_name = var.resource_group_name
 }
 
 locals {
@@ -96,11 +101,11 @@ locals {
   execucao_mongo_connection_string = "mongodb+srv://${urlencode(mongodbatlas_database_user.execucao_app.username)}:${urlencode(random_password.execucao_mongo.result)}@${local.execucao_mongo_srv_host}/${var.execucao_mongo_database_name}?authSource=admin&retryWrites=true&w=majority"
 }
 
-# Quem grava o secret e este repositorio. No CI, a identidade github_oidc_banco
-# so tem "Key Vault Secrets Officer" escopado a este secret (concedido pelo
-# Infra), entao o secret precisa existir antes: o primeiro apply e local, com
-# um administrador do Key Vault. O depends_on garante que a connection string
-# so e publicada depois de o usuario existir e de o IP do AKS estar liberado.
+# Quem grava o secret e este root, aplicado so da minha maquina por um
+# administrador do Key Vault (Key Vault Administrator): o CI do Banco nao aplica
+# nem le este root, e a identidade github_oidc_banco nao tem role nenhuma nesse
+# secret (docs/adr/0004). O depends_on garante que a connection string so e
+# publicada depois de o usuario existir e de o IP do AKS estar liberado.
 resource "azurerm_key_vault_secret" "execucao_mongo_connection_string" {
   name         = var.execucao_mongo_secret_name
   value        = local.execucao_mongo_connection_string

@@ -8,15 +8,8 @@ billing_database_name   = "BillingDb"
 
 # client_ip_address = "203.0.113.5"   # opcional: libera acesso direto ao banco a partir deste IP
 
-# --- Key Vault (onde este repo grava a connection string do MongoDB do Execucao) ---
-key_vault_name = "kvfiap"
-
-# --- MongoDB Atlas (cluster M0 do Execucao) ---
-atlas_project_name           = "OficinaMecanica"
-atlas_cluster_name           = "execucao"
-atlas_region                 = "US_EAST_2" # confirmar que a regiao oferece o tier gratuito (M0)
-execucao_mongo_database_name = "execucao"
-execucao_mongo_username      = "execucao_app"
+# O MongoDB Atlas do Execucao nao fica aqui: e o root atlas/ (state proprio, aplicado
+# so localmente) - ver atlas/terraform.tfvars.example e docs/adr/0004.
 
 # Valores sem default: nao ficam neste arquivo. Definir por variavel de ambiente
 # (PowerShell: $env:NOME = "..."; bash: export NOME=...) antes de plan/apply.
@@ -26,9 +19,3 @@ execucao_mongo_username      = "execucao_app"
 #     TF_VAR_sql_app_os_password            = "<16+ caracteres: maiuscula, minuscula, digito>"
 #     TF_VAR_sql_app_seguranca_password     = "<idem>"
 #     TF_VAR_sql_app_billing_password       = "<idem>"
-#     MONGODB_ATLAS_PUBLIC_KEY              = "<public key da API key de organizacao do Atlas>"
-#     MONGODB_ATLAS_PRIVATE_KEY             = "<private key correspondente>"
-#
-#   Nao secretos, mas sem default:
-#     TF_VAR_atlas_org_id                   = "<24 caracteres hexadecimais da organizacao no Atlas>"
-#     TF_VAR_aks_egress_ip                  = "<IP publico de saida do AKS, ex: 203.0.113.10>"

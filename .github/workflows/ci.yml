@@ -9,8 +9,8 @@ on:
 
 # So em PR uma execucao nova cancela a anterior (la o job e apenas plan, sem
 # efeito colateral). Em push/disparo manual em main/release nao cancelo: o
-# apply cria recursos demorados (o cluster do Atlas leva minutos) e cancelar no
-# meio pode deixar um recurso criado fora do state e o lock do state preso.
+# apply pode criar recursos demorados (um banco serverless leva minutos) e cancelar
+# no meio pode deixar um recurso criado fora do state e o lock do state preso.
 # As execucoes na mesma ref ficam enfileiradas.
 concurrency:
   group: ci-${{ github.ref }}
@@ -52,6 +52,14 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      # O root atlas/ nao tem plan nem apply no CI (so e aplicado localmente, ver
+      # docs/adr/0004), mas o codigo dele precisa continuar valido. Sem backend e
+      # sem credenciais: init -backend=false so baixa os provedores.
+      - name: Terraform Validate (atlas)
+        run: |
+          terraform -chdir=atlas init -backend=false -input=false
+          terraform -chdir=atlas validate
+
       # -lock=false de proposito: e so leitura (plan), nao disputa lock com
       # o job de apply nem com um terraform apply manual rodando ao mesmo
       # tempo - NUNCA fazer isso num terraform apply de verdade.
@@ -64,15 +72,11 @@ jobs:
           TF_VAR_sql_app_os_password: ${{ secrets.TF_VAR_SQL_APP_OS_PASSWORD }}
           TF_VAR_sql_app_seguranca_password: ${{ secrets.TF_VAR_SQL_APP_SEGURANCA_PASSWORD }}
           TF_VAR_sql_app_billing_password: ${{ secrets.TF_VAR_SQL_APP_BILLING_PASSWORD }}
-          TF_VAR_aks_egress_ip: ${{ secrets.TF_VAR_AKS_EGRESS_IP }}
-          TF_VAR_atlas_org_id: ${{ secrets.TF_VAR_ATLAS_ORG_ID }}
-          MONGODB_ATLAS_PUBLIC_KEY: ${{ secrets.MONGODB_ATLAS_PUBLIC_KEY }}
-          MONGODB_ATLAS_PRIVATE_KEY: ${{ secrets.MONGODB_ATLAS_PRIVATE_KEY }}
 
   apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
-    # Teto com folga: criacao do cluster M0 (minutos) mais ate 10 tentativas de
+    # Teto com folga: o apply de um banco serverless (minutos) mais ate 10 tentativas de
     # 30s por banco no passo de SQL. Sem isso um passo travado segura o job por
     # horas (o padrao do GitHub e 360 minutos) e, com a fila de execucoes da
     # concurrency acima, bloquearia os proximos applies.
@@ -106,11 +110,8 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      # Atualizar o secret do Key Vault exige "Key Vault Secrets Officer" para
-      # esta identidade, escopado so ao secret execucao-mongo-connection-string
-      # (concedido pelo OficinaMecanica.Infra). Como o escopo e o proprio
-      # secret, ele precisa existir antes: o primeiro apply deste repo e local
-      # (ver CLAUDE.md, "Bootstrap").
+      # Este job so aplica o root principal (SQL Server e bancos). O Atlas vive no
+      # root atlas/, que o CI nao aplica nem le (docs/adr/0004).
       - name: Terraform Apply
         run: terraform apply -input=false -auto-approve
         env:
@@ -118,10 +119,6 @@ jobs:
           TF_VAR_sql_app_os_password: ${{ secrets.TF_VAR_SQL_APP_OS_PASSWORD }}
           TF_VAR_sql_app_seguranca_password: ${{ secrets.TF_VAR_SQL_APP_SEGURANCA_PASSWORD }}
           TF_VAR_sql_app_billing_password: ${{ secrets.TF_VAR_SQL_APP_BILLING_PASSWORD }}
-          TF_VAR_aks_egress_ip: ${{ secrets.TF_VAR_AKS_EGRESS_IP }}
-          TF_VAR_atlas_org_id: ${{ secrets.TF_VAR_ATLAS_ORG_ID }}
-          MONGODB_ATLAS_PUBLIC_KEY: ${{ secrets.MONGODB_ATLAS_PUBLIC_KEY }}
-          MONGODB_ATLAS_PRIVATE_KEY: ${{ secrets.MONGODB_ATLAS_PRIVATE_KEY }}
 
       # Nomes vindos dos outputs do proprio Terraform (nada de nome de
       # servidor/banco duplicado aqui). Nenhum output e sensivel. Cada valor e

@@ -66,14 +66,15 @@ administrador do servidor, o que da a cada servico acesso a todos os bancos.
    ultimo. Se o Infra aplicar antes de os usuarios existirem, OS Service (o antigo monolito) e
    Seguranca (que hoje usam o administrador) perdem a conexao.
 
-   Bootstrap (primeira vez), coerente com o ADR 0002: (a) aplicar o Banco
-   localmente com administrador humano, o que cria `BillingDb`, Atlas e o
-   secret do Mongo; (b) criar os usuarios SQL, preferencialmente rodando
+   Bootstrap (primeira vez), coerente com os ADRs 0002 e 0004: (a) aplicar o
+   root principal do Banco localmente com administrador humano, o que cria
+   `BillingDb`; (b) criar os usuarios SQL, preferencialmente rodando
    `sql/criar-usuarios.sql` local logo depois de (a), para que existam antes de
    o Infra trocar as connection strings dos servicos que ja rodam (a via pelo
    CI, no primeiro apply bem-sucedido, so serve se nenhum servico em uso
-   depender deles antes disso); (c) o Infra (CI) cria a role escopada ao secret
-   do Mongo e as connection strings; (d) dai em diante o CI do Banco funciona.
+   depender deles antes disso); (c) aplicar o `atlas/` localmente (Atlas e
+   secret do Mongo; precisa estar pronto antes do deploy do Execucao, nao antes
+   do Infra); (d) o Infra (CI) cria as connection strings.
 
 ### Por que `db_owner` e nao menos
 O mesmo usuario e usado pela aplicacao e pelo passo de migrations do CI de cada

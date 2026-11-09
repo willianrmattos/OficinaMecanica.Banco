@@ -9,8 +9,10 @@ Terraform dos dados do ecossistema OficinaMecanica:
   [OficinaMecanica.Billing](../OficinaMecanica.Billing)), cada um com um
   usuario SQL contido dedicado.
 - **MongoDB Atlas (cluster M0 gratuito)** do
-  [OficinaMecanica.Execucao](../OficinaMecanica.Execucao), com a connection
-  string gravada no Key Vault por este repositorio.
+  [OficinaMecanica.Execucao](../OficinaMecanica.Execucao), num root Terraform
+  separado (pasta [atlas/](atlas/README.md), state proprio, aplicado so da
+  maquina de um administrador), com a connection string gravada no Key Vault
+  por este repositorio.
 
 Extraido do modulo `sqldb/` que vivia em
 [OficinaMecanica.Infra](../OficinaMecanica.Infra) (repositorio irmao, que
@@ -41,7 +43,7 @@ todos, mas cada credencial so alcanca o banco do seu servico.
 | [OficinaMecanica.Billing](../OficinaMecanica.Billing) | Orcamento e pagamento, integrado ao Mercado Pago | `BillingDb` (usuario `app_billing`) |
 | [OficinaMecanica.Execucao](../OficinaMecanica.Execucao) | Fila de execucao, diagnostico e reparo | MongoDB Atlas M0, banco `execucao` (usuario `execucao_app`) |
 | [OficinaMecanica.Seguranca](../OficinaMecanica.Seguranca) | Autenticacao/autorizacao: emite JWT (JSON Web Token) RS256 e expoe o JWKS | `SegurancaDb` (usuario `app_seguranca`) |
-| [OficinaMecanica.Infra](../OficinaMecanica.Infra) | Terraform da plataforma (AKS, ACR, Key Vault, APIM, RabbitMQ, OIDC do GitHub Actions) | Monta as connection strings SQL no Key Vault com os usuarios criados aqui e concede ao CI deste repo a role no secret do Mongo |
+| [OficinaMecanica.Infra](../OficinaMecanica.Infra) | Terraform da plataforma (AKS, ACR, Key Vault, APIM, RabbitMQ, OIDC do GitHub Actions) | Monta as connection strings SQL no Key Vault com os usuarios criados aqui |
 
 ```
 Este repositorio (OficinaMecanica.Banco)                    Consumidor
@@ -53,9 +55,9 @@ Azure SQL svsfiap
         (usuarios criados por sql/criar-usuarios.sql; connection strings no Key Vault
          kvfiap montadas pelo OficinaMecanica.Infra)
 
-MongoDB Atlas M0 (projeto OficinaMecanica, cluster execucao)
+MongoDB Atlas M0 (projeto OficinaMecanica, cluster execucao; root atlas/)
   `- banco execucao     <-- execucao_app ----------------   Execucao
-        (connection string gravada AQUI no Key Vault: execucao-mongo-connection-string)
+        (connection string gravada AQUI, pelo atlas/, no Key Vault: execucao-mongo-connection-string)
 ```
 
 ## Diagramas
@@ -77,8 +79,15 @@ MongoDB Atlas M0 (projeto OficinaMecanica, cluster execucao)
 | 0001 | [Extracao do banco em repositorio e state proprios](docs/adr/0001-extracao-em-repositorio-e-state-proprios.md) |
 | 0002 | [MongoDB Atlas M0 provisionado por Terraform neste repositorio](docs/adr/0002-mongodb-atlas-m0-provisionado-por-terraform.md) |
 | 0003 | [BillingDb e usuarios SQL dedicados por banco](docs/adr/0003-billingdb-e-usuarios-sql-dedicados-por-banco.md) |
+| 0004 | [Atlas aplicado so localmente, fora do CI](docs/adr/0004-atlas-aplicado-so-localmente-fora-do-ci.md) |
 
 ## Recursos
+
+O repositorio tem dois roots Terraform independentes: o principal (raiz, state
+`banco.tfstate`, so SQL) e o `atlas/` (state `atlas.tfstate`, so MongoDB Atlas,
+aplicado so localmente; ver [atlas/README.md](atlas/README.md) e o ADR 0004).
+
+### Root principal (SQL)
 
 | Recurso | Nome | Finalidade |
 |---------|------|------------|
@@ -88,6 +97,16 @@ MongoDB Atlas M0 (projeto OficinaMecanica, cluster execucao)
 | `azurerm_mssql_database.seguranca` | `SegurancaDb` | Banco do `OficinaMecanica.Seguranca` (serverless comum, 2 GB) |
 | `azurerm_mssql_database.billing` | `BillingDb` | Banco do `OficinaMecanica.Billing` (serverless `GP_S_Gen5_2`, 0,5 vCore minimo, auto-pause de 60 min, teto de 5 GB) |
 | `azurerm_mssql_firewall_rule.allow_azure_services` / `.client_ip` | `AllowAllWindowsAzureIps` / `ClientIp` | Libera servicos Azure (faixa `0.0.0.0`, nao a internet) + 1 IP de cliente opcional (`client_ip_address`, so se informado) |
+
+Usuarios SQL contidos (criados por `sql/criar-usuarios.sql` no CI, ou
+localmente no bootstrap, nao por Terraform - o `azurerm` nao cria usuario
+contido): `app_os` em `OficinaMecanicaDb`, `app_seguranca` em `SegurancaDb`,
+`app_billing` em `BillingDb`, cada um `db_owner` so no proprio banco.
+
+### Root `atlas/` (MongoDB Atlas, so local)
+
+| Recurso | Nome | Finalidade |
+|---------|------|------------|
 | `mongodbatlas_project.this` | `OficinaMecanica` | Projeto proprio no Atlas |
 | `mongodbatlas_advanced_cluster.execucao` | `execucao` | Cluster M0 gratuito (`TENANT`/`AZURE`, `US_EAST_2`) do `OficinaMecanica.Execucao`, com `prevent_destroy` |
 | `random_password.execucao_mongo` | - | Senha de 32 caracteres alfanumericos do usuario do Atlas (so existe no state e no Key Vault) |
@@ -95,11 +114,6 @@ MongoDB Atlas M0 (projeto OficinaMecanica, cluster execucao)
 | `mongodbatlas_project_ip_access_list.aks_egress` | - | `/32` do IP de saida do AKS (sem `0.0.0.0/0`) |
 | `data.azurerm_key_vault.this` | `kvfiap` | Referencia por nome ao Key Vault do Infra |
 | `azurerm_key_vault_secret.execucao_mongo_connection_string` | `execucao-mongo-connection-string` | Connection string do Mongo, no `kvfiap` |
-
-Usuarios SQL contidos (criados por `sql/criar-usuarios.sql` no CI, ou
-localmente no bootstrap, nao por Terraform - o `azurerm` nao cria usuario
-contido): `app_os` em `OficinaMecanicaDb`, `app_seguranca` em `SegurancaDb`,
-`app_billing` em `BillingDb`, cada um `db_owner` so no proprio banco.
 
 O resource group (`rgfiap`) e o Key Vault (`kvfiap`) sao provisionados e
 gerenciados pelo `OficinaMecanica.Infra` — este repositorio so referencia
@@ -114,28 +128,37 @@ Sem default (obrigatorias; entram por variavel de ambiente, nunca em
 |----------|----------|------------|
 | `administrator_login_password` | sim | Senha do administrador do SQL Server |
 | `sql_app_os_password`, `sql_app_seguranca_password`, `sql_app_billing_password` | sim | Mesmos nomes e mesmos valores do Infra; `validation` de 16 a 128 caracteres entre letras, digitos e `_ . @ # % ^ * + ~ -`, com maiuscula, minuscula e digito. Nenhum recurso as consome: servem so ao script SQL do CI e para o `plan` falhar cedo se o secret faltar |
+
+Com default: `billing_database_name`, `billing_sku_name`, `billing_max_size_gb`,
+`billing_min_capacity`, `billing_auto_pause_delay_in_minutes` (`BillingDb`,
+`GP_S_Gen5_2`, 5, 0.5, 60) e `client_ip_address` (`null`).
+
+### Variaveis do root `atlas/`
+
+Declaradas so em `atlas/variables.tf` (o root principal nao as conhece). Sem
+default (entram por variavel de ambiente ao aplicar o `atlas/` localmente):
+
+| Variavel | Sensivel | Observacao |
+|----------|----------|------------|
 | `atlas_org_id` | nao | 24 caracteres hexadecimais da organizacao no Atlas |
 | `aks_egress_ip` | nao | Um unico IPv4 publico (IP de saida do AKS); CIDR, `0.0.0.0` e faixas privadas/loopback/link-local/CGNAT/multicast/reservadas sao recusados |
 | `MONGODB_ATLAS_PUBLIC_KEY`, `MONGODB_ATLAS_PRIVATE_KEY` | sim | Nao sao variaveis Terraform: o provider `mongodbatlas` as le do ambiente |
 
-Com default: `billing_database_name`, `billing_sku_name`, `billing_max_size_gb`,
-`billing_min_capacity`, `billing_auto_pause_delay_in_minutes` (`BillingDb`,
-`GP_S_Gen5_2`, 5, 0.5, 60), `key_vault_name` (`kvfiap`), `atlas_project_name`,
+Com default: `key_vault_name` (`kvfiap`), `atlas_project_name`,
 `atlas_cluster_name`, `atlas_region` (`OficinaMecanica`, `execucao`,
 `US_EAST_2` - confirmar que a regiao oferece M0), `execucao_mongo_database_name`,
 `execucao_mongo_username`, `execucao_mongo_secret_name` (`execucao`,
-`execucao_app`, `execucao-mongo-connection-string`) e `client_ip_address`
-(`null`).
+`execucao_app`, `execucao-mongo-connection-string`).
 
 ## Rodando
+
+Root principal (SQL):
 
 ```bash
 cp terraform.tfvars.example terraform.tfvars
 # preencher so o que nao e segredo; o resto entra por variavel de ambiente:
 #   TF_VAR_administrator_login_password, TF_VAR_sql_app_os_password,
-#   TF_VAR_sql_app_seguranca_password, TF_VAR_sql_app_billing_password,
-#   TF_VAR_atlas_org_id, TF_VAR_aks_egress_ip,
-#   MONGODB_ATLAS_PUBLIC_KEY, MONGODB_ATLAS_PRIVATE_KEY
+#   TF_VAR_sql_app_seguranca_password, TF_VAR_sql_app_billing_password
 #   (opcional, pra rodar o SQL daqui: TF_VAR_client_ip_address com o IP de quem executa)
 
 terraform init
@@ -149,27 +172,45 @@ terraform apply
 #   -v NomeUsuario=<app_...>
 ```
 
+Root `atlas/` (MongoDB Atlas, so da maquina de um administrador; o CI nunca o
+aplica):
+
+```bash
+export MONGODB_ATLAS_PUBLIC_KEY="<public key>"
+export MONGODB_ATLAS_PRIVATE_KEY="<private key>"
+export TF_VAR_atlas_org_id="<24 caracteres hexadecimais da organizacao>"
+export TF_VAR_aks_egress_ip="<IP publico de saida do AKS>"
+
+cd atlas
+cp terraform.tfvars.example terraform.tfvars   # ajustar se preciso
+terraform init
+terraform plan
+terraform apply
+```
+
 ### Pre-requisitos que dependem de acao externa
 
-- **Administrador humano no Azure** (`az login`) com `Key Vault Administrator`
-  no `kvfiap` e `Storage Blob Data Contributor` no container do tfstate, para o
-  primeiro apply (local).
-- **Conta e organizacao no MongoDB Atlas**, uma **API key de organizacao** (par
-  publico/privado; role minima esperada `Organization Project Creator`, a
-  confirmar no primeiro apply) e o `atlas_org_id`.
-- **`aks_egress_ip`**: IP publico de saida do AKS, copiado a mao do cluster (nao
-  ha `terraform_remote_state`):
-  `az aks show -g rgfiap -n aksfiap --query "networkProfile.loadBalancerProfile.effectiveOutboundIPs[].id" -o tsv`
-  e depois `az network public-ip show --ids <id> --query ipAddress -o tsv`.
-  Se o cluster for recriado, o IP muda e os pods da Execucao perdem acesso ao
-  Mongo ate atualizar `TF_VAR_aks_egress_ip` e aplicar de novo.
+- **Administrador humano no Azure** (`az login`) com `Storage Blob Data
+  Contributor` no container do tfstate, para o primeiro apply (local) do root
+  principal.
+- **Para aplicar o `atlas/` (so local)**:
+  - `az login` com `Key Vault Administrator` no `kvfiap` (alem do
+    `Storage Blob Data Contributor` no container do tfstate).
+  - **Conta e organizacao no MongoDB Atlas**, uma **API key de organizacao**
+    (par publico/privado; role minima esperada `Organization Project Creator`, a
+    confirmar no primeiro apply) com o IP da maquina de quem aplica na access
+    list da key, e o `atlas_org_id`.
+  - **`aks_egress_ip`**: IP publico de saida do AKS, copiado a mao do cluster
+    (nao ha `terraform_remote_state`):
+    `az aks show -g rgfiap -n aksfiap --query "networkProfile.loadBalancerProfile.effectiveOutboundIPs[].id" -o tsv`
+    e depois `az network public-ip show --ids <id> --query ipAddress -o tsv`.
+    Se o cluster for recriado, o IP muda e os pods da Execucao perdem acesso ao
+    Mongo ate atualizar `TF_VAR_aks_egress_ip` e aplicar o `atlas/` de novo.
 - **go-sqlcmd** (mesma variante usada no CI) para criar os usuarios SQL no
   bootstrap local.
-- **Para o CI**: a role `Key Vault Secrets Officer` do `github_oidc_banco`,
-  escopada ao secret `execucao-mongo-connection-string` (concedida pelo Infra
-  depois de o secret existir).
 
-Como obter cada um esta no `CLAUDE.md` e no ADR 0002.
+O CI nao precisa de nenhuma credencial do Atlas nem de role no secret do Mongo
+(ver o ADR 0004). Como obter cada um esta no `CLAUDE.md` e no ADR 0002.
 
 ## CI/CD
 
@@ -183,6 +224,11 @@ abre uma regra de firewall temporaria so com o IP do runner, roda
 `sql/criar-usuarios.sql` nos tres bancos (ate 10 tentativas por banco) e remove
 a regra (`if: always()`). O `validate` nao executa SQL.
 
+O `plan` e o `apply` do CI cobrem so o root principal (SQL). O CI **nao aplica
+nem le o `atlas/`**: ele so roda `terraform fmt -check -recursive` (que cobre o
+`atlas/`) e o passo "Terraform Validate (atlas)", com `init -backend=false` e
+`validate`, sem credenciais. O Atlas e aplicado so localmente (ADR 0004).
+
 Configurar no repositorio (Settings > Secrets and variables > Actions); sem
 eles o `plan`/`apply` falha na validacao das variaveis:
 
@@ -192,9 +238,8 @@ eles o `plan`/`apply` falha na validacao das variaveis:
 | `TF_VAR_SQL_APP_OS_PASSWORD` | `sql_app_os_password` | sim |
 | `TF_VAR_SQL_APP_SEGURANCA_PASSWORD` | `sql_app_seguranca_password` | sim |
 | `TF_VAR_SQL_APP_BILLING_PASSWORD` | `sql_app_billing_password` | sim |
-| `TF_VAR_AKS_EGRESS_IP` | `aks_egress_ip` | nao (fica em secret por convencao do repo) |
-| `TF_VAR_ATLAS_ORG_ID` | `atlas_org_id` | nao (idem) |
-| `MONGODB_ATLAS_PUBLIC_KEY`, `MONGODB_ATLAS_PRIVATE_KEY` | variaveis de ambiente lidas pelo provider `mongodbatlas` | sim |
+
+Nenhuma credencial nem variavel do Atlas fica no GitHub (ver o ADR 0004).
 
 Variaveis (nao secrets): `AZURE_CLIENT_ID` (`terraform output banco_client_id`
 do Infra), `AZURE_TENANT_ID` e `AZURE_SUBSCRIPTION_ID`.
@@ -209,36 +254,29 @@ conexao. O merge de um PR em `release`/`main` dispara `apply` com
 
 Bootstrap (primeira vez), resumido; o passo a passo esta no `CLAUDE.md`:
 
-1. Aplicar o Banco localmente com um administrador humano (`Key Vault
-   Administrator`): cria `BillingDb`, o Atlas e o secret do Mongo. O CI nao
-   consegue, porque a role do CI no Key Vault so alcanca esse secret depois de
-   ele existir.
+1. Aplicar o root principal localmente com um administrador humano: cria
+   `BillingDb`.
 2. Criar os usuarios SQL: rodando `sql/criar-usuarios.sql` localmente logo em
    seguida (recomendado, antes de o Infra trocar as connection strings dos
    servicos que ja rodam) ou deixando o primeiro apply bem-sucedido do CI faze-lo.
-3. Infra (CI): cria a role escopada ao secret e as connection strings.
-4. Dai em diante o CI do Banco funciona.
+3. Aplicar o `atlas/` localmente (`cd atlas; terraform init; terraform plan;
+   terraform apply`, com um administrador do Key Vault e a API key do Atlas):
+   cria o projeto, o cluster M0, o usuario, a IP access list e o secret
+   `execucao-mongo-connection-string`.
+4. Infra (CI): cria as connection strings dos servicos SQL.
 
-## Decisao pendente: como o CI alcanca a API do Atlas
+O `atlas/` precisa estar aplicado antes do **deploy do Execucao** (o pod le o
+secret `execucao-mongo-connection-string` pelo SecretProviderClass). Nao e
+pre-requisito do apply do Infra: a ordem Banco -> Infra vem dos usuarios SQL.
 
-Antes do merge em `release` (que dispara o `apply` com `-auto-approve`) e preciso
-decidir como o CI acessa a Administration API do Atlas: ela exige, por padrao,
-uma **access list de IPs na API key**, e o runner hospedado do GitHub tem **IP
-variavel**. Opcoes (ver ADR 0002):
+## Decisao: o CI nao alcanca o Atlas
 
-- (a) liberar `0.0.0.0/0` na access list da **propria API key** (nao do cluster,
-  que continua restrito ao `/32` do AKS), compensado pela role minima da key e
-  por ela viver so em secret do GitHub;
-- (b) desligar o requisito de access list da API na organizacao do Atlas;
-- (c) listar as faixas do GitHub (`api.github.com/meta`) - inviavel, sao muitas
-  e mudam toda semana;
-- (d) runner proprio com IP fixo.
-
-Ate escolher, o `plan`/`apply` pelo CI recebe 403 do Atlas. Como os recursos do
-Atlas estao no state, todo `plan` de PR faz refresh no Atlas: um 403 persistente
-trava o job `validate` e, como o `apply` tem `needs: validate`, bloqueia ate
-mudancas so de SQL. A decisao e os secrets do Atlas precisam estar prontos antes
-do merge.
+A Administration API do Atlas exige, por padrao, uma access list de IPs na API
+key, e o runner hospedado do GitHub tem IP variavel; o Atlas recusa `0.0.0.0/0`
+na access list de uma API key. Por isso o Atlas fica num root separado (`atlas/`,
+state `atlas.tfstate`), aplicado so localmente, e o CI nao o aplica nem o le (so
+`fmt` e `validate`, sem credenciais). Alternativas avaliadas, consequencias e a
+lista dos secrets do GitHub que deixam de ser necessarios: ADR 0004.
 
 ## Atlas M0: limites e riscos
 
@@ -246,9 +284,9 @@ do merge.
 rejeita), 10 GB de entrada/saida por 7 dias, 1 cluster gratuito por projeto,
 pausa apos 30 dias sem conexoes. O cluster nao e modificavel depois de criado:
 trocar nome ou regiao recria o cluster e apaga os dados (por isso
-`prevent_destroy`). Rotacionar a senha do usuario do Atlas:
-`terraform apply -replace=random_password.execucao_mongo` e reiniciar os pods
-da Execucao. Ainda nao verificado no Atlas real: transacoes multi-documento no
+`prevent_destroy`). Rotacionar a senha do usuario do Atlas (da maquina de um
+administrador): `terraform -chdir=atlas apply -replace=random_password.execucao_mongo`
+e reiniciar os pods da Execucao. Ainda nao verificado no Atlas real: transacoes multi-documento no
 M0 (necessarias ao outbox do MassTransit sobre MongoDB), a regiao `US_EAST_2`
 oferecer M0 e a criacao do cluster pelo provider 2.x (ver ADR 0002).
 
@@ -265,18 +303,19 @@ os dois repositorios compartilharem state. Em resumo, o contrato entre os dois:
   mesmos nomes nos dois repos; o Infra grava `sql-connection-string`,
   `seguranca-sql-connection-string` e `billing-sql-connection-string` no
   `kvfiap` (com `Initial Catalog`, porque usuario contido nao conecta no `master`).
-- O secret `execucao-mongo-connection-string` e gravado **aqui** (o host do Atlas
-  so existe apos criar o cluster) e lido pela Execucao via CSI Secrets Store.
-- O Infra concede ao `github_oidc_banco` `Reader` no resource group,
-  `Contributor` no SQL Server e `Key Vault Secrets Officer` escopado **so** a esse
-  secret (a identidade tem credencial de `pull_request`).
+- O secret `execucao-mongo-connection-string` e gravado **aqui**, pelo root
+  `atlas/` (o host do Atlas so existe apos criar o cluster), e lido pela Execucao
+  via CSI Secrets Store.
+- O Infra concede ao `github_oidc_banco` `Reader` no resource group e
+  `Contributor` no SQL Server. A identidade nao tem role no secret do Mongo: o CI
+  nao grava esse secret.
 - Sem `terraform_remote_state`: nomes e `aks_egress_ip` sao copiados a mao.
 
 ## Stack Tecnologica
 
 | Categoria | Tecnologia | Versao |
 |-----------|-----------|--------|
-| IaC | Terraform (providers `azurerm ~> 4.0`, `mongodbatlas ~> 2.21`, `random ~> 3.6`) | >= 1.5 (CI usa 1.15.7) |
+| IaC | Terraform (root principal: `azurerm ~> 4.0`; root `atlas/`: `azurerm ~> 4.0`, `mongodbatlas ~> 2.21`, `random ~> 3.6`) | >= 1.5 (CI usa 1.15.7) |
 | Banco relacional | Azure SQL Database (`OficinaMecanicaDb` sempre-gratis, `SegurancaDb` e `BillingDb` serverless) | — |
 | Banco de documentos | MongoDB Atlas M0 (hospedado no Azure) | — |
 | CI/CD | GitHub Actions + OIDC (Federated Identity Credential, sem client secret) | — |
