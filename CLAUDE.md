@@ -102,6 +102,12 @@ pra esse repo, ja que import nao afeta o recurso real, so o state).
 | `execucao_mongo_database_name`, `execucao_mongo_username`, `execucao_mongo_secret_name` | nao | defaults `execucao`, `execucao_app`, `execucao-mongo-connection-string` |
 | `aks_egress_ip` | nao | sem default; um unico IPv4 publico: CIDR, `0.0.0.0` e faixas privadas/loopback/link-local/CGNAT/multicast/reservadas sao recusados |
 
+**Protecao de branch**: o ruleset `protect-main-release` (so `main` e `release`: sem apagar nem force-push, PR
+obrigatorio e o check `Terraform Validate` exigido; sem bypass) ja esta ATIVO no GitHub e o arquivo versionado
+`.github/rulesets/protect-main-release.json` e equivalente a ele. Nao ha script para aplicar: se precisar recriar ou
+alterar, use a GitHub CLI com esse arquivo (`gh api --method PUT repos/willianrmattos/OficinaMecanica.Banco/rulesets/<id> --input
+.github/rulesets/protect-main-release.json`; o `<id>` sai de `gh api repos/willianrmattos/OficinaMecanica.Banco/rulesets`).
+
 ## Segredos e variaveis do GitHub Actions deste repo
 
 Secrets (todos novos, exceto o primeiro; mapeados em `ci.yml` para `TF_VAR_*`
