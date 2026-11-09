@@ -123,7 +123,7 @@ principal nao as conhece):
 |----------|----------|------------|
 | `key_vault_name` | nao | default `kvfiap` |
 | `atlas_org_id` | nao | sem default; 24 hex da organizacao no Atlas |
-| `atlas_project_name`, `atlas_cluster_name`, `atlas_region` | nao | defaults `OficinaMecanica`, `execucao`, `US_EAST_2` (confirmar que a regiao oferece M0) |
+| `atlas_project_name`, `atlas_cluster_name`, `atlas_region` | nao | defaults `OficinaMecanica`, `execucao`, `EUROPE_NORTH` (Irlanda) |
 | `execucao_mongo_database_name`, `execucao_mongo_username`, `execucao_mongo_secret_name` | nao | defaults `execucao`, `execucao_app`, `execucao-mongo-connection-string` |
 | `aks_egress_ip` | nao | sem default; um unico IPv4 publico: CIDR, `0.0.0.0` e faixas privadas/loopback/link-local/CGNAT/multicast/reservadas sao recusados |
 | `MONGODB_ATLAS_PUBLIC_KEY`, `MONGODB_ATLAS_PRIVATE_KEY` | **sim** | nao sao variaveis Terraform: o provider `mongodbatlas` as le do ambiente |
@@ -254,9 +254,10 @@ criado: trocar nome ou regiao recria o cluster e apaga os dados (por isso
 `prevent_destroy`). Rotacionar a senha do usuario do Atlas:
 `terraform -chdir=atlas apply -replace=random_password.execucao_mongo` (da maquina
 de um administrador) e reiniciar os pods.
-Nao verificado no Atlas real: transacoes multi-documento no M0 (necessarias ao
+Verificado no Atlas real em 2026-11-09: o M0 em `EUROPE_NORTH` e a criacao do cluster pelo
+provider 2.x (apply do `atlas/`). Nao verificado: transacoes multi-documento no M0 (necessarias ao
 outbox `MassTransit.MongoDb`; fallback do spike do outbox, ver o ADR 0002: outbox embutido +
-relay), regiao `US_EAST_2` oferecer M0 e criacao do cluster pelo provider 2.x.
+relay).
 
 ## Por que nao acopla com o state do OficinaMecanica.Infra
 

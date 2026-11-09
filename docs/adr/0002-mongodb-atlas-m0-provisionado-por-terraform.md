@@ -33,7 +33,7 @@ ADR 0004), com o provider `mongodb/mongodbatlas` (`~> 2.21`, resolvido 2.21.0):
   gratuito por projeto.
 - `mongodbatlas_advanced_cluster`: `REPLICASET`, `provider_name = "TENANT"`,
   `backing_provider_name = "AZURE"`, `instance_size = "M0"`, regiao pela
-  variavel `atlas_region` (padrao `US_EAST_2`). Com `prevent_destroy`.
+  variavel `atlas_region` (padrao `EUROPE_NORTH`). Com `prevent_destroy`.
 - `mongodbatlas_database_user` `execucao_app`: role `readWrite` SOMENTE no
   banco `execucao` (nunca `atlasAdmin`), escopado ao cluster. A senha e gerada
   por `random_password` (32 caracteres alfanumericos): ninguem a conhece, ela
@@ -174,18 +174,21 @@ localmente.
   + consumer no Atlas M0 precisa acontecer antes de fechar a escolha do outbox
   (resultados do spike na secao abaixo). Se o M0 rejeitar ou estrangular
   transacoes, usar o fallback ja implementado.
-- Regiao: `US_EAST_2` (Virginia) e o padrao por proximidade com o resource
-  group do AKS (`northcentralus`), mas nem toda regiao Azure oferece o tier
-  gratuito. A coluna "Free" da tabela de regioes Azure da documentacao do Atlas
-  e a fonte de verdade; nao consegui confirmar a marcacao de `US_EAST_2` por
-  leitura automatizada (os marcadores da tabela nao vieram no texto). O
-  changelog do Atlas menciona suporte do M0 em `CANADA_CENTRAL` (Toronto), a
-  confirmar, como alternativa.
+- Regiao: o padrao e `EUROPE_NORTH` (Irlanda), escolhida pelo dono do projeto
+  (conta do Atlas em regiao europeia). Verificada em 2026-11-09: o apply do
+  `atlas/` criou o M0 ali, entao a regiao oferece o tier gratuito. Custo: o
+  resource group do AKS fica em `northcentralus`, entao cada operacao
+  Execucao -> Mongo paga latencia transatlantica (ordem de 100 ms).
+  `US_EAST_2` (Virginia, proxima do AKS) e `CANADA_CENTRAL` (Toronto) seguem
+  como alternativas, sem confirmacao de M0. A coluna "Free" da tabela de
+  regioes Azure da documentacao do Atlas e a fonte de verdade, mas os
+  marcadores dela nao vem na leitura automatizada.
 - Role minima da API key (descrita acima). O requisito de access list da
   Administration API esta resolvido pelo ADR 0004.
 - O provider `mongodbatlas` 2.x foi escolhido pela versao atual do registro; a
   sintaxe (`replication_specs` como lista de atributos) foi checada pelo
-  `validate`, mas a criacao do M0 so se confirma no primeiro apply.
+  `validate`, e a criacao do M0 foi confirmada no apply de 2026-11-09 (cluster
+  `execucao` em `EUROPE_NORTH`, estado `IDLE`).
 
 ### Resultados do spike do outbox
 Antes de escrever o Execucao, um spike descartavel validou o `MassTransit.MongoDb`

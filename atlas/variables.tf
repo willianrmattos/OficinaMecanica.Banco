@@ -33,9 +33,9 @@ variable "atlas_cluster_name" {
 }
 
 variable "atlas_region" {
-  description = "Regiao do cluster M0 no Atlas, no formato do Atlas para provedor AZURE (ex: US_EAST_2 = Virginia, CANADA_CENTRAL = Toronto). Nem toda regiao do Azure oferece o tier gratuito: confirmar na coluna 'Free' da tabela de regioes Azure da documentacao do Atlas antes do apply. Trocar a regiao recria o cluster (M0 nao e modificavel) e perde os dados."
+  description = "Regiao do cluster M0 no Atlas, no formato do Atlas para provedor AZURE (ex: EUROPE_NORTH = Irlanda, EUROPE_WEST = Paises Baixos, US_EAST_2 = Virginia, CANADA_CENTRAL = Toronto). Nem toda regiao do Azure oferece o tier gratuito: confirmar na coluna 'Free' da tabela de regioes Azure da documentacao do Atlas antes do apply. Trocar a regiao recria o cluster (M0 nao e modificavel) e perde os dados."
   type        = string
-  default     = "US_EAST_2"
+  default     = "EUROPE_NORTH"
 }
 
 variable "execucao_mongo_database_name" {

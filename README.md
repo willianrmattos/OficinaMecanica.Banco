@@ -108,7 +108,7 @@ contido): `app_os` em `OficinaMecanicaDb`, `app_seguranca` em `SegurancaDb`,
 | Recurso | Nome | Finalidade |
 |---------|------|------------|
 | `mongodbatlas_project.this` | `OficinaMecanica` | Projeto proprio no Atlas |
-| `mongodbatlas_advanced_cluster.execucao` | `execucao` | Cluster M0 gratuito (`TENANT`/`AZURE`, `US_EAST_2`) do `OficinaMecanica.Execucao`, com `prevent_destroy` |
+| `mongodbatlas_advanced_cluster.execucao` | `execucao` | Cluster M0 gratuito (`TENANT`/`AZURE`, `EUROPE_NORTH`) do `OficinaMecanica.Execucao`, com `prevent_destroy` |
 | `random_password.execucao_mongo` | - | Senha de 32 caracteres alfanumericos do usuario do Atlas (so existe no state e no Key Vault) |
 | `mongodbatlas_database_user.execucao_app` | `execucao_app` | `readWrite` somente no banco `execucao`, escopado ao cluster (nunca `atlasAdmin`) |
 | `mongodbatlas_project_ip_access_list.aks_egress` | - | `/32` do IP de saida do AKS (sem `0.0.0.0/0`) |
@@ -146,7 +146,7 @@ default (entram por variavel de ambiente ao aplicar o `atlas/` localmente):
 
 Com default: `key_vault_name` (`kvfiap`), `atlas_project_name`,
 `atlas_cluster_name`, `atlas_region` (`OficinaMecanica`, `execucao`,
-`US_EAST_2` - confirmar que a regiao oferece M0), `execucao_mongo_database_name`,
+`EUROPE_NORTH`, Irlanda), `execucao_mongo_database_name`,
 `execucao_mongo_username`, `execucao_mongo_secret_name` (`execucao`,
 `execucao_app`, `execucao-mongo-connection-string`).
 
@@ -286,9 +286,9 @@ pausa apos 30 dias sem conexoes. O cluster nao e modificavel depois de criado:
 trocar nome ou regiao recria o cluster e apaga os dados (por isso
 `prevent_destroy`). Rotacionar a senha do usuario do Atlas (da maquina de um
 administrador): `terraform -chdir=atlas apply -replace=random_password.execucao_mongo`
-e reiniciar os pods da Execucao. Ainda nao verificado no Atlas real: transacoes multi-documento no
-M0 (necessarias ao outbox do MassTransit sobre MongoDB), a regiao `US_EAST_2`
-oferecer M0 e a criacao do cluster pelo provider 2.x (ver ADR 0002).
+e reiniciar os pods da Execucao. Verificado no Atlas real em 2026-11-09: o M0 em `EUROPE_NORTH` e a criacao do cluster pelo
+provider 2.x. Ainda nao verificado: transacoes multi-documento no M0 (necessarias ao outbox do
+MassTransit sobre MongoDB; ver ADR 0002).
 
 ## Infraestrutura relacionada
 

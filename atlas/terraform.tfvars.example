@@ -5,7 +5,7 @@ key_vault_name      = "kvfiap"
 
 atlas_project_name           = "OficinaMecanica"
 atlas_cluster_name           = "execucao"
-atlas_region                 = "US_EAST_2" # confirmar que a regiao oferece o tier gratuito (M0)
+atlas_region                 = "EUROPE_NORTH" # Irlanda; confirmar que a regiao oferece o tier gratuito (M0)
 execucao_mongo_database_name = "execucao"
 execucao_mongo_username      = "execucao_app"
 

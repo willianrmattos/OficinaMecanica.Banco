@@ -50,7 +50,7 @@ Tirar o Atlas do CI:
    apply`, com `MONGODB_ATLAS_PUBLIC_KEY`, `MONGODB_ATLAS_PRIVATE_KEY`,
    `TF_VAR_atlas_org_id` e `TF_VAR_aks_egress_ip` no ambiente. Ele cria o projeto
    `OficinaMecanica`, o cluster M0 `execucao` (provedor `AZURE`, regiao
-   `US_EAST_2`, com `prevent_destroy`), o usuario `execucao_app` (`readWrite` so
+   `EUROPE_NORTH`, com `prevent_destroy`), o usuario `execucao_app` (`readWrite` so
    no banco `execucao`), a IP access list com o IP de saida do AKS (`/32`), o
    `random_password` e grava a connection string no secret
    `execucao-mongo-connection-string` do Key Vault.
