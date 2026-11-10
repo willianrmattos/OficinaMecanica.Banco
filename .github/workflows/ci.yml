@@ -7,9 +7,14 @@ on:
     branches: [main, release]
   workflow_dispatch:
 
+# So em PR uma execucao nova cancela a anterior (la o job e apenas plan, sem
+# efeito colateral). Em push/disparo manual em main/release nao cancelo: o
+# apply pode criar recursos demorados (um banco serverless leva minutos) e cancelar
+# no meio pode deixar um recurso criado fora do state e o lock do state preso.
+# As execucoes na mesma ref ficam enfileiradas.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -19,12 +24,13 @@ jobs:
   validate:
     name: Terraform Validate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: "1.15.7"
 
@@ -34,7 +40,7 @@ jobs:
       # Identidade unica do repo (OficinaMecanica.Infra/github_oidc_banco) -
       # cobre tanto PR (plan) quanto push em main/release (apply, job abaixo).
       - name: Azure Login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -46,34 +52,56 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      # O root atlas/ nao tem plan nem apply no CI (so e aplicado localmente, ver
+      # docs/adr/0004), mas o codigo dele precisa continuar valido. Sem backend e
+      # sem credenciais: init -backend=false so baixa os provedores.
+      - name: Terraform Validate (atlas)
+        run: |
+          terraform -chdir=atlas init -backend=false -input=false
+          terraform -chdir=atlas validate
+
       # -lock=false de proposito: e so leitura (plan), nao disputa lock com
       # o job de apply nem com um terraform apply manual rodando ao mesmo
       # tempo - NUNCA fazer isso num terraform apply de verdade.
+      # As senhas dos usuarios SQL entram aqui so pro "validation" do
+      # variables.tf barrar secret ausente/fora do padrao antes do apply.
       - name: Terraform Plan
         run: terraform plan -input=false -lock=false
         env:
           TF_VAR_administrator_login_password: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}
+          TF_VAR_sql_app_os_password: ${{ secrets.TF_VAR_SQL_APP_OS_PASSWORD }}
+          TF_VAR_sql_app_seguranca_password: ${{ secrets.TF_VAR_SQL_APP_SEGURANCA_PASSWORD }}
+          TF_VAR_sql_app_billing_password: ${{ secrets.TF_VAR_SQL_APP_BILLING_PASSWORD }}
 
   apply:
     name: Terraform Apply
     runs-on: ubuntu-latest
+    # Teto com folga: o apply de um banco serverless (minutos) mais ate 10 tentativas de
+    # 30s por banco no passo de SQL. Sem isso um passo travado segura o job por
+    # horas (o padrao do GitHub e 360 minutos) e, com a fila de execucoes da
+    # concurrency acima, bloquearia os proximos applies.
+    timeout-minutes: 60
     needs: validate
     if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release')
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      # terraform_wrapper desligado: o passo "Ler outputs do Terraform" usa
+      # "terraform output -raw" dentro de um script, e o wrapper do action
+      # existe so pra capturar stdout como output de step.
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: "1.15.7"
+          terraform_wrapper: false
 
       # Mesma identidade do job "validate" acima
       # (OficinaMecanica.Infra/github_oidc_banco) - so essa credential
       # federada e restrita a push em main/release, nunca alcancavel a
       # partir de um PR.
       - name: Azure Login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -82,7 +110,174 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
+      # Este job so aplica o root principal (SQL Server e bancos). O Atlas vive no
+      # root atlas/, que o CI nao aplica nem le (docs/adr/0004).
       - name: Terraform Apply
         run: terraform apply -input=false -auto-approve
         env:
           TF_VAR_administrator_login_password: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}
+          TF_VAR_sql_app_os_password: ${{ secrets.TF_VAR_SQL_APP_OS_PASSWORD }}
+          TF_VAR_sql_app_seguranca_password: ${{ secrets.TF_VAR_SQL_APP_SEGURANCA_PASSWORD }}
+          TF_VAR_sql_app_billing_password: ${{ secrets.TF_VAR_SQL_APP_BILLING_PASSWORD }}
+
+      # Nomes vindos dos outputs do proprio Terraform (nada de nome de
+      # servidor/banco duplicado aqui). Nenhum output e sensivel. Cada valor e
+      # lido numa atribuicao propria (o "echo" com substituicao de comando
+      # esconderia o codigo de saida do terraform) e um valor vazio derruba o
+      # passo na hora, em vez de seguir adiante com nome em branco.
+      - name: Ler outputs do Terraform
+        id: tf
+        run: |
+          set -euo pipefail
+
+          saida() {
+            local valor
+            valor="$(terraform output -raw "$1")"
+            if [[ -z "$valor" ]]; then
+              echo "Output '$1' do Terraform veio vazio." >&2
+              exit 1
+            fi
+            printf '%s' "$valor"
+          }
+
+          resource_group="$(saida resource_group_name)"
+          server_name="$(saida server_name)"
+          server_fqdn="$(saida server_fqdn)"
+          admin_login="$(saida administrator_login)"
+          db_os="$(saida database_name)"
+          db_seguranca="$(saida seguranca_database_name)"
+          db_billing="$(saida billing_database_name)"
+
+          {
+            echo "resource_group=${resource_group}"
+            echo "server_name=${server_name}"
+            echo "server_fqdn=${server_fqdn}"
+            echo "admin_login=${admin_login}"
+            echo "db_os=${db_os}"
+            echo "db_seguranca=${db_seguranca}"
+            echo "db_billing=${db_billing}"
+          } >> "$GITHUB_OUTPUT"
+
+      # O azurerm nao cria usuario contido de Azure SQL, entao os 3 usuarios
+      # (app_os, app_seguranca, app_billing) saem do sql/criar-usuarios.sql,
+      # rodado DEPOIS do apply (os bancos ja existem) como administrador do
+      # servidor. O job "validate" nao executa SQL.
+      #
+      # O ubuntu-latest nao traz sqlcmd (o README da imagem ubuntu 24.04 nao
+      # lista nenhuma ferramenta cliente de SQL Server), entao instalo o
+      # go-sqlcmd num release pinado, conferindo o sha256 do tarball (o mesmo
+      # valor do digest que o GitHub mostra no asset do release e que conferi
+      # baixando o arquivo). Exijo o go-sqlcmd (e nao o sqlcmd ODBC) porque o
+      # script SQL depende de ele resolver "$(Variavel)" a partir do ambiente,
+      # o que mantem a senha fora da linha de comando. O diretorio entra no
+      # inicio do PATH pra nao ser sobrescrito por outro sqlcmd do runner.
+      - name: Instalar sqlcmd (go-sqlcmd pinado)
+        env:
+          GO_SQLCMD_VERSAO: v1.10.0
+          GO_SQLCMD_SHA256: 92516d98c63d99b0994de5b61350c91f6915f9b76f139a59039fbcb225c2e987
+        run: |
+          set -euo pipefail
+          destino="${RUNNER_TEMP}/go-sqlcmd"
+          mkdir -p "$destino"
+          curl -fsSL --retry 3 -o "${destino}/sqlcmd.tar.bz2" \
+            "https://github.com/microsoft/go-sqlcmd/releases/download/${GO_SQLCMD_VERSAO}/sqlcmd-linux-amd64.tar.bz2"
+          echo "${GO_SQLCMD_SHA256}  ${destino}/sqlcmd.tar.bz2" | sha256sum --check --strict -
+          tar -xjf "${destino}/sqlcmd.tar.bz2" -C "$destino" sqlcmd
+          test -x "${destino}/sqlcmd"
+          echo "$destino" >> "$GITHUB_PATH"
+
+      # Abordagem escolhida pro runner alcancar o SQL: regra de firewall
+      # TEMPORARIA so com o IP publico deste runner (/32), criada antes do
+      # SQL e removida no passo final (if: always(), roda tambem se o job
+      # falhar ou for cancelado). Nao confio so na regra "Azure Services"
+      # (0.0.0.0) do main.tf: ela nao e garantida pra runner hospedado pelo
+      # GitHub. Risco aceito: durante alguns minutos o servidor aceita
+      # conexao desse IP, ainda sujeito a usuario e senha. Se o passo de
+      # remocao falhar, sobra uma regra ci-runner-* com IP de runner; ela
+      # nao esta no state do Terraform (nao gera drift) e deve ser apagada
+      # manualmente.
+      - name: Liberar IP do runner no firewall do SQL
+        id: firewall
+        env:
+          RESOURCE_GROUP: ${{ steps.tf.outputs.resource_group }}
+          SERVER_NAME: ${{ steps.tf.outputs.server_name }}
+        run: |
+          set -euo pipefail
+          ip="$(curl -fsS --max-time 20 https://api.ipify.org || curl -fsS --max-time 20 https://checkip.amazonaws.com)"
+          ip="$(echo "$ip" | tr -d '[:space:]')"
+          if [[ ! "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+            echo "Nao consegui descobrir o IP publico do runner." >&2
+            exit 1
+          fi
+          regra="ci-runner-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "regra=${regra}" >> "$GITHUB_OUTPUT"
+          az sql server firewall-rule create \
+            --resource-group "$RESOURCE_GROUP" \
+            --server "$SERVER_NAME" \
+            --name "$regra" \
+            --start-ip-address "$ip" \
+            --end-ip-address "$ip" \
+            --output none
+
+      # As senhas chegam por variavel de ambiente (mascaradas nos logs) e vao
+      # pro sqlcmd tambem por ambiente: SenhaUsuario e definida so no processo
+      # do sqlcmd e o go-sqlcmd resolve "$(SenhaUsuario)" do script a partir
+      # dele, entao nenhuma senha aparece na linha de comando (argv). Sem
+      # "set -x", nada do script imprime senha.
+      # O padrao de caracteres espelha o "validation" do variables.tf: a senha
+      # entra num literal T-SQL, entao aspas simples quebrariam o comando.
+      # A repeticao cobre dois atrasos normais: o firewall do Azure SQL pode
+      # levar alguns minutos pra propagar a regra nova, e o banco serverless
+      # pode estar pausado (a primeira conexao o retoma e falha ate ele subir).
+      - name: Criar usuarios SQL dedicados por banco
+        env:
+          SQLCMDPASSWORD: ${{ secrets.TF_VAR_ADMINISTRATOR_LOGIN_PASSWORD }}
+          SERVER_FQDN: ${{ steps.tf.outputs.server_fqdn }}
+          ADMIN_LOGIN: ${{ steps.tf.outputs.admin_login }}
+          DB_OS: ${{ steps.tf.outputs.db_os }}
+          DB_SEGURANCA: ${{ steps.tf.outputs.db_seguranca }}
+          DB_BILLING: ${{ steps.tf.outputs.db_billing }}
+          SENHA_APP_OS: ${{ secrets.TF_VAR_SQL_APP_OS_PASSWORD }}
+          SENHA_APP_SEGURANCA: ${{ secrets.TF_VAR_SQL_APP_SEGURANCA_PASSWORD }}
+          SENHA_APP_BILLING: ${{ secrets.TF_VAR_SQL_APP_BILLING_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          padrao_senha='^[A-Za-z0-9_.@#%^*+~-]{16,128}$'
+
+          criar_usuario() {
+            local banco="$1" usuario="$2" senha="$3" tentativa
+            if [[ ! "$senha" =~ $padrao_senha ]]; then
+              echo "Senha de ${usuario} ausente ou fora do padrao (16 a 128 caracteres seguros)." >&2
+              return 1
+            fi
+            for tentativa in 1 2 3 4 5 6 7 8 9 10; do
+              if SenhaUsuario="$senha" sqlcmd -S "$SERVER_FQDN" -d "$banco" -U "$ADMIN_LOGIN" -l 60 -b \
+                  -i sql/criar-usuarios.sql \
+                  -v NomeUsuario="$usuario"; then
+                echo "Usuario ${usuario} em ${banco}: ok."
+                return 0
+              fi
+              echo "Tentativa ${tentativa}/10 em ${banco} falhou; aguardando 30s." >&2
+              sleep 30
+            done
+            echo "Nao consegui criar ${usuario} em ${banco}." >&2
+            return 1
+          }
+
+          criar_usuario "$DB_OS" app_os "$SENHA_APP_OS"
+          criar_usuario "$DB_SEGURANCA" app_seguranca "$SENHA_APP_SEGURANCA"
+          criar_usuario "$DB_BILLING" app_billing "$SENHA_APP_BILLING"
+
+      - name: Remover regra temporaria do firewall do SQL
+        if: always() && steps.firewall.outputs.regra != ''
+        env:
+          RESOURCE_GROUP: ${{ steps.tf.outputs.resource_group }}
+          SERVER_NAME: ${{ steps.tf.outputs.server_name }}
+          REGRA: ${{ steps.firewall.outputs.regra }}
+        run: |
+          az sql server firewall-rule delete \
+            --resource-group "$RESOURCE_GROUP" \
+            --server "$SERVER_NAME" \
+            --name "$REGRA" \
+            --yes

@@ -1,0 +1,21 @@
+# Copie para terraform.tfvars (ignorado pelo git). Este root e aplicado so da
+# minha maquina, nunca pelo CI (docs/adr/0004).
+resource_group_name = "rgfiap"
+key_vault_name      = "kvfiap"
+
+atlas_project_name           = "OficinaMecanica"
+atlas_cluster_name           = "execucao"
+atlas_region                 = "EUROPE_NORTH" # Irlanda; confirmar que a regiao oferece o tier gratuito (M0)
+execucao_mongo_database_name = "execucao"
+execucao_mongo_username      = "execucao_app"
+
+# Valores sem default: nao ficam neste arquivo. Definir por variavel de ambiente
+# (PowerShell: $env:NOME = "..."; bash: export NOME=...) antes de plan/apply.
+#
+#   Segredos (nunca commitar valor real):
+#     MONGODB_ATLAS_PUBLIC_KEY  = "<public key da API key de organizacao do Atlas>"
+#     MONGODB_ATLAS_PRIVATE_KEY = "<private key correspondente>"
+#
+#   Nao secretos, mas sem default:
+#     TF_VAR_atlas_org_id       = "<24 caracteres hexadecimais da organizacao no Atlas>"
+#     TF_VAR_aks_egress_ip      = "<IP publico de saida do AKS, ex: 203.0.113.10>"

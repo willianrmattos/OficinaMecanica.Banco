@@ -55,3 +55,15 @@ Azure SQL Database serverless, um SQL Server logico compartilhado entre
 os dois bancos do ecossistema (`OficinaMecanicaDb`, `SegurancaDb`) -
 compartilhar o servidor (nao o banco) reduz custo sem misturar os dados
 dos dois servicos.
+
+## Atualizacao (microsservicos)
+A decisao acima continua valendo para os bancos relacionais, mas o escopo
+cresceu com a divisao em microsservicos: o mesmo SQL Server logico `svsfiap`
+agora tambem hospeda o `BillingDb` do `OficinaMecanica.Billing` (orcamentos e
+pagamentos, tambem relacional, serverless, com usuario SQL dedicado por banco -
+ADR 0003), e o `OficinaMecanica.Execucao` usa **MongoDB Atlas (cluster M0
+gratuito)**, nao Azure SQL (ADR 0002). A rejeicao do Cosmos DB acima vale para
+o dominio relacional do OS Service (o antigo monolito); a fila de execucao do Execucao e
+documento-orientada, consumida por claim atomico (substituicao filtrada pela versao do documento), e o outbox do
+MassTransit exige replica set (razoes do banco NoSQL proprio e independente dos
+bancos SQL, registradas no ADR 0002).

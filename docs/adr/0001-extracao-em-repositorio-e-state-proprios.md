@@ -55,3 +55,12 @@ do SQL Server), evitando acoplar os dois states um ao outro.
   duplicar variaveis, mas acoplaria o `apply` de um repositorio a
   conseguir ler o state remoto do outro - rejeitado para manter os dois
   repositorios independentes em runtime.
+
+## Atualizacao (microsservicos)
+Depois da extracao, este repositorio passou a provisionar tambem o `BillingDb`
+(terceiro banco no mesmo servidor logico, ADR 0003, no mesmo state
+`banco.tfstate`) e o cluster MongoDB Atlas M0 da Execucao (ADR 0002), este num
+root Terraform separado, `atlas/`, com state proprio (`atlas.tfstate`) e
+aplicado so localmente (ADR 0004). Vale a mesma regra de nao usar
+`terraform_remote_state` entre repositorios: o `aks_egress_ip`, por exemplo, e
+copiado a mao do cluster.
