@@ -23,14 +23,15 @@ via `terraform state rm` (no `OficinaMecanica.Infra`) + `terraform import`
 (aqui), sem destruir/recriar nada no Azure — confirmado via `terraform plan`
 vazio nos dois repos apos a migracao.
 
-## Estado atual: NADA disto foi aplicado
+## Estado atual (2026-11-10): aplicado
 
-BillingDb, usuarios SQL e Atlas (a parte do Terraform dos microsservicos) estao so
-escritos e validados com `terraform fmt -check`, `terraform init
--backend=false` e `terraform validate`. Nenhum `plan`/`apply`, nenhum SQL
-executado, nenhuma conta Atlas usada. O script `sql/criar-usuarios.sql` teve
-a sintaxe checada por parser offline, nao por execucao. Os ADRs 0002 e 0003
-listam o que ainda precisa ser validado no ambiente real.
+O BillingDb e os usuarios SQL dedicados por banco (`app_os`, `app_seguranca` e `app_billing`)
+foram aplicados em 2026-11-09 (PRs #7 a #9 deste repositorio). O cluster Atlas M0 da Execucao
+(regiao EUROPE_NORTH) foi criado pelo root `atlas/`, aplicado **so localmente** (ADR 0004), com
+um usuario restrito ao banco `execucao` e a connection string gravada no Key Vault; a IP access
+list do projeto tem so o IP de saida do AKS. Os servicos em producao usam esses acessos (a
+prontidao `/health/ready` dos tres servicos de negocio respondeu 200 em 2026-11-10). Continua
+pendente: rebaixar ou revogar a chave de API admin do Atlas (`ORG_OWNER`).
 
 ## Estrutura
 
