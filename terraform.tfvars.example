@@ -1,11 +1,21 @@
-location                 = "canadacentral"
-resource_group_name      = "rgfiap"
-server_name              = "svsfiap"
-database_name            = "OficinaMecanicaDb"
-administrator_login      = "adminfiap"
-seguranca_database_name  = "SegurancaDb"
+location                = "canadacentral"
+resource_group_name     = "rgfiap"
+server_name             = "svsfiap"
+database_name           = "OficinaMecanicaDb"
+administrator_login     = "adminfiap"
+seguranca_database_name = "SegurancaDb"
+billing_database_name   = "BillingDb"
 
 # client_ip_address = "203.0.113.5"   # opcional: libera acesso direto ao banco a partir deste IP
 
-# administrator_login_password nao tem default - definir via variavel de ambiente antes do apply:
-# $env:TF_VAR_administrator_login_password = "<senha-forte>"
+# O MongoDB Atlas do Execucao nao fica aqui: e o root atlas/ (state proprio, aplicado
+# so localmente) - ver atlas/terraform.tfvars.example e docs/adr/0004.
+
+# Valores sem default: nao ficam neste arquivo. Definir por variavel de ambiente
+# (PowerShell: $env:NOME = "..."; bash: export NOME=...) antes de plan/apply.
+#
+#   Segredos (nunca commitar valor real):
+#     TF_VAR_administrator_login_password   = "<senha-forte>"
+#     TF_VAR_sql_app_os_password            = "<16+ caracteres: maiuscula, minuscula, digito>"
+#     TF_VAR_sql_app_seguranca_password     = "<idem>"
+#     TF_VAR_sql_app_billing_password       = "<idem>"
