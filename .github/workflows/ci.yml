@@ -279,5 +279,4 @@ jobs:
           az sql server firewall-rule delete \
             --resource-group "$RESOURCE_GROUP" \
             --server "$SERVER_NAME" \
-            --name "$REGRA" \
-            --yes
+            --name "$REGRA"
