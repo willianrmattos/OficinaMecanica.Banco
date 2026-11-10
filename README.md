@@ -19,8 +19,9 @@ Extraido do modulo `sqldb/` que vivia em
 centraliza todo o resto da infra do ecossistema) — ver `CLAUDE.md` para
 detalhes da migracao.
 
-> Estado: BillingDb, usuarios SQL e Atlas estao escritos e validados so com
-> `terraform fmt`/`validate`; nada foi aplicado (ver `CLAUDE.md`).
+> Estado (2026-11-10): aplicado. BillingDb e os usuarios SQL dedicados por banco foram
+> aplicados em 2026-11-09; o cluster Atlas M0 da Execucao foi criado pelo root `atlas/`,
+> aplicado so localmente (ver `CLAUDE.md` e o ADR 0004).
 
 Este repositorio e so Terraform — nao expoe nenhuma API HTTP propria (sem
 Swagger/Postman aplicavel). As APIs que consomem esses bancos sao as dos

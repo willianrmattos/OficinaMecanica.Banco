@@ -1,6 +1,9 @@
 # ADR 0002: MongoDB Atlas M0 provisionado por Terraform neste repositorio
 
 ## Status
+**Atualizacao em 2026-11-10:** o cluster Atlas M0 foi criado (regiao EUROPE_NORTH) pelo root `atlas/`, aplicado so localmente; "nada foi aplicado" e "validacao no Atlas real ainda
+pendente", abaixo, descrevem o momento da decisao.
+
 Aceito. Parcialmente substituido pelo ADR 0004: a decisao de provisionar o M0
 por Terraform neste repositorio continua valendo, mas o Atlas vive num root
 separado (`atlas/`, state `atlas.tfstate`) aplicado so localmente, e o CI nao o

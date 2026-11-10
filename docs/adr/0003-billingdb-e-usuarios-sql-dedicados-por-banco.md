@@ -1,6 +1,8 @@
 # ADR 0003: BillingDb e usuarios SQL dedicados por banco
 
 ## Status
+**Atualizacao em 2026-11-10:** o BillingDb e os usuarios SQL dedicados foram aplicados em 2026-11-09; "nada foi aplicado ainda", abaixo, descreve o momento da decisao.
+
 Aceito. Nada foi aplicado ainda: o Terraform foi validado so com `fmt` e
 `validate`, e o script T-SQL so teve a sintaxe verificada por parser offline
 (nenhum SQL foi executado contra servidor nenhum).
